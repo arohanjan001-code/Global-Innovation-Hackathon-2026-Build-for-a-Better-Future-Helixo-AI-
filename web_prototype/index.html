@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Helixo V2 K210 - Next-Gen Edge AI Helmet Detection powered by YOLOv8">
+    <title>Helixo V2 — Edge AI Helmet Interlock</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="style.css">
+
+    <!-- ONNX Runtime Web from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+</head>
+<body>
+
+    <!-- Background Glow FX -->
+    <div class="glow-bg"></div>
+    <div class="grid-overlay"></div>
+
+    <!-- Loading Screen (shows while model loads) -->
+    <div id="modelLoadingScreen" class="model-loading-screen">
+        <div class="loader-card">
+            <div class="brand-badge"><i class="fas fa-microchip"></i> HELIXO V2 K210</div>
+            <div class="loader-spinner"></div>
+            <h2>Initializing Neural Network</h2>
+            <p id="loaderStatus">Downloading YOLOv8-nano (12 MB)...</p>
+            <div class="loader-bar-bg">
+                <div id="loaderBar" class="loader-bar"></div>
+            </div>
+            <span class="loader-tag">Client-Side WASM Inference Engine</span>
+        </div>
+    </div>
+
+    <!-- Navigation Header -->
+    <header class="navbar">
+        <div class="nav-brand">
+            <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+            <div class="logo-text">
+                <span class="brand-name">HELIXO <span class="brand-v2">V2</span></span>
+                <span class="brand-subtitle">AI IGNITION INTERLOCK</span>
+            </div>
+        </div>
+
+        <div class="nav-metrics">
+            <div class="metric-pill">
+                <span class="pulse-dot green"></span>
+                <span>YOLOv8-nano</span>
+            </div>
+            <div class="metric-pill">
+                <i class="fas fa-bolt"></i>
+                <span>Edge K210 Architecture</span>
+            </div>
+        </div>
+
+        <div class="nav-controls">
+            <!-- Arduino Connect Button -->
+            <button id="btnArduino" class="btn-arduino" title="Connect Arduino via USB Serial">
+                <i class="fas fa-plug" id="arduinoBtnIcon"></i>
+                <span id="arduinoBtnText">Connect Arduino</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-layout">
+
+        <!-- Top Control Bar -->
+        <div class="control-header">
+            <!-- Mode Toggle Tabs -->
+            <div class="mode-toggle">
+                <button class="mode-btn active" id="btnModeLive" data-mode="live">
+                    <i class="fas fa-video"></i> Real-Time Camera
+                </button>
+                <button class="mode-btn" id="btnModeImage" data-mode="image">
+                    <i class="fas fa-images"></i> Image Batch Tester
+                </button>
+            </div>
+
+            <!-- Arduino Status Readout -->
+            <div id="arduinoStatusBar" class="arduino-status-bar">
+                <div class="status-indicator">
+                    <span class="arduino-dot" id="arduinoDot"></span>
+                    <span id="arduinoStatusText" class="status-txt">Arduino: Disconnected</span>
+                </div>
+                <span class="baud-tag"><i class="fas fa-terminal"></i> 9600 Bps</span>
+            </div>
+        </div>
+
+        <!-- =================== LIVE VIDEO MODE =================== -->
+        <div class="content-section" id="liveModeContainer">
+            <div class="viewport-card">
+                
+                <div class="viewport-header">
+                    <div class="view-title">
+                        <i class="fas fa-camera-retro"></i>
+                        <span>Webcam Feed Telemetry</span>
+                    </div>
+                    
+                    <!-- Ignition Relay Badge -->
+                    <div class="ignition-badge" id="ignitionBadge">
+                        <i class="fas fa-key" id="ignitionIcon"></i>
+                        <span id="ignitionText">IGNITION CUT</span>
+                    </div>
+                </div>
+                
+                <!-- Camera Viewport with Viewfinder Overlay -->
+                <div class="live-video-wrapper" id="liveVideoWrapper">
+                    <video id="liveVideo" autoplay playsinline muted></video>
+                    <canvas id="liveCanvas"></canvas>
+
+                    <!-- HUD Viewfinder Corners -->
+                    <div class="hud-corner top-left"></div>
+                    <div class="hud-corner top-right"></div>
+                    <div class="hud-corner bottom-left"></div>
+                    <div class="hud-corner bottom-right"></div>
+
+                    <!-- Detection Result Banner Overlay -->
+                    <div class="live-overlay" id="liveOverlay">
+                        <div class="overlay-left">
+                            <span class="live-label" id="liveLabel">Camera Offline</span>
+                        </div>
+                        <div class="overlay-right">
+                            <span class="live-confidence" id="liveConfidence"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stream Control Actions -->
+                <div class="stream-actions">
+                    <button id="btnStartLive" class="btn btn-start">
+                        <i class="fas fa-play"></i> Start Camera Stream
+                    </button>
+                    <button id="btnStopLive" class="btn btn-stop" style="display:none;">
+                        <i class="fas fa-stop"></i> Stop Stream
+                    </button>
+                </div>
+
+                <!-- Telemetry Dashboard Cards -->
+                <div class="telemetry-grid" id="liveStatsBar">
+                    <div class="telemetry-card">
+                        <div class="t-icon"><i class="fas fa-gauge-high"></i></div>
+                        <div class="t-data">
+                            <div class="sv" id="liveFps">0</div>
+                            <div class="sl">Inference FPS</div>
+                        </div>
+                    </div>
+                    <div class="telemetry-card helmet-card">
+                        <div class="t-icon"><i class="fas fa-shield-check"></i></div>
+                        <div class="t-data">
+                            <div class="sv" id="liveHelmetCount">0</div>
+                            <div class="sl">Helmet Detected</div>
+                        </div>
+                    </div>
+                    <div class="telemetry-card danger-card">
+                        <div class="t-icon"><i class="fas fa-triangle-exclamation"></i></div>
+                        <div class="t-data">
+                            <div class="sv" id="liveNoHelmetCount">0</div>
+                            <div class="sl">Violations Cut</div>
+                        </div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="t-icon"><i class="fas fa-film"></i></div>
+                        <div class="t-data">
+                            <div class="sv" id="liveTotalFrames">0</div>
+                            <div class="sl">Total Frames</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- =================== IMAGE UPLOAD MODE =================== -->
+        <div class="content-section" id="imageModeContainer" style="display:none;">
+            <div class="playground-grid">
+
+                <!-- LEFT: Input Panel -->
+                <div class="card input-card">
+                    <div class="card-title">
+                        <i class="fas fa-cloud-arrow-up"></i>
+                        <span>Dataset Batch Ingestion</span>
+                    </div>
+
+                    <div id="uploadZone" class="upload-zone">
+                        <div class="upload-icon"><i class="fas fa-folder-open"></i></div>
+                        <h3>Drag & drop test photos here</h3>
+                        <p>Supports JPG, PNG, WEBP — <strong>Batch processing ready</strong></p>
+                        <div id="fileCountBadge" class="file-count-badge" style="display:none"></div>
+                        <input type="file" id="fileInput" accept="image/*" multiple>
+                    </div>
+
+                    <div class="btn-group">
+                        <button id="btnDetect" class="btn btn-primary" disabled>
+                            <i class="fas fa-microchip"></i> Run Inference
+                        </button>
+                        <button id="btnWebcam" class="btn btn-webcam">
+                            <i class="fas fa-camera"></i> Snap Photo
+                        </button>
+                    </div>
+
+                    <!-- Processing indicator -->
+                    <div id="processingBar" class="processing-bar" style="display:none">
+                        <div class="spinner-small"></div>
+                        <span id="processingText">Running YOLOv8 inference...</span>
+                    </div>
+
+                    <!-- Webcam (single-shot capture) -->
+                    <div id="webcamBox" class="webcam-box" style="display:none">
+                        <video id="webcamVideo" autoplay playsinline></video>
+                        <div class="webcam-controls">
+                            <button id="btnCapture" class="btn btn-primary" style="flex:1">
+                                <i class="fas fa-camera-retro"></i> Capture & Detect
+                            </button>
+                            <button id="btnCloseWc" class="btn btn-secondary" style="flex:0.5">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT: Inference Results Panel -->
+                <div class="card results-card-wrapper">
+                    <div id="placeholder" class="placeholder-card">
+                        <div class="placeholder-icon"><i class="fas fa-helmet-safety"></i></div>
+                        <h3>No Evaluation Selected</h3>
+                        <p>Upload single or batch images to run edge AI helmet verification.<br>100% offline client-side evaluation.</p>
+                    </div>
+                    <div id="resultsContainer" class="results-container"></div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer System Banner -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <span class="footer-tag">HELIXO AI EDGE PLATFORM</span>
+                <span>• YOLOv8-nano Object Detection</span>
+            </div>
+            <div class="footer-right">
+                <span>Hardware Interlock Architecture: <strong>Kendryte K210 + OV5640 + Arduino UNO Relay</strong></span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Hidden canvas for image processing -->
+    <canvas id="processingCanvas" style="display:none"></canvas>
+
+    <script src="app.js"></script>
+</body>
+</html>
